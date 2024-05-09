@@ -1,0 +1,4 @@
+channels==4.0.0
+Django==4.2.11
+firebase_admin==6.3.0
+mariadb==1.1.8
