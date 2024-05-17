@@ -79,12 +79,12 @@ WSGI_APPLICATION = "geddit.wsgi.application"
 
 DATABASES = {
     "default": {
-        "ENGINE": "django.db.backends.postgresql_psycopg2",
+        "ENGINE": "django.db.backends.mysql",
         "NAME": "geddit",
-        "USER": "admin",
-        "PASSWORD": "gedditadmin",
-        "HOST": "localhost",
-        "PORT": "5432",
+        "USER": "root",
+        "PASSWORD": "password",
+        "HOST": "127.0.0.1",
+        "PORT": "3306",
     }
 }
 
