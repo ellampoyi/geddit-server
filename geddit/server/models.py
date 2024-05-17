@@ -33,7 +33,8 @@ class ListedErrand(models.Model):
     price = models.IntegerField()
 
     def __str__(self):
-        return self.from_user.name + " " + self.status
+        return (self.from_user.name + " " + self.list_time + " " + self.price + " " + self.description + " "
+                + self.errand_id)
 
 
 class AcceptedErrand(models.Model):
@@ -44,4 +45,5 @@ class AcceptedErrand(models.Model):
     price = models.IntegerField()
 
     def __str__(self):
-        return self.from_user.name + " " + self.status
+        return (self.from_user.name + " " + self.to_user.name + " " + self.price + " " + self.description + " "
+                + self.errand_id)
