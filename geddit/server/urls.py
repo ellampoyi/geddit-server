@@ -1,4 +1,4 @@
-from django.urls import path
+from django.urls import path, include
 
 from . import views
 
@@ -9,5 +9,6 @@ urlpatterns = [
     path("users/profile", views.get_profile, name="profile"),
     path("errands/request", views.request_errand, name="request_errand"),
     path("errands/listed", views.listed_errands, name="listed_errands"),
-    #path("active_errands", views.active_errands, name="active_errands"),
+    path('accounts/', include('django.contrib.auth.urls')),
+    # path("active_errands", views.active_errands, name="active_errands"),
 ]

@@ -1,8 +1,12 @@
 import json
 from channels.generic.websocket import AsyncWebsocketConsumer
 from django.db import connection
-
-cursor = connection.cursor()
+from django.db import IntegrityError
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError
+from geddit.server.models import AcceptedErrand
+from geddit.server.models import ListedErrand
+from geddit.server.models import CustomUser as User
 
 
 class YourConsumer(AsyncWebsocketConsumer):
@@ -66,101 +70,145 @@ class YourConsumer(AsyncWebsocketConsumer):
 
 
 def create_account(mail, password):
-    cursor.execute("SELECT mail FROM USERS WHERE phone = %s;", [str(mail)])
-    print("Asdas")
-    #print(len(cursor.fetchall()))
-    #print(cursor.fetchall())
-    if len(cursor.fetchall()) == 0:
-        cursor.execute("INSERT INTO USERS (password, phone) VALUES (%s, %s);", (password, str(mail)))
-        connection.commit()
-        return True
+    try:
+        validate_password(password)
+        user = User.objects.create_user(mail, mail, password)
+
+    except IntegrityError:
+        status = {"status": False,
+                  "reason": "user already exists"}
+        status_json = json.dumps(status)
+        return status_json
+
+    except ValidationError as e:
+        status = {"status": False,
+                  "reason": list(e.messages)}
+        status_json = json.dumps(status)
+        return status_json
+
     else:
-        return False
+        status = {"status": True,
+                  "reason": None}
+        status_json = json.dumps(status)
+        return status_json
 
 
-def authenticate(phone, hash):
-    cursor.execute("SELECT password FROM USERS WHERE phone = %s", [str(phone)])
-    user = cursor.fetchone()
-
-    if user is None:
-        return False
-    if user[0] == hash:
-        return True
-    else:
-        return False
+# to create an errand when a user posts and errand
+def new_errand(from_loc, to_loc, description, mail, price):
+    user = User.objects.get(mail=mail)
+    errand = ListedErrand(from_user=user, description=description, from_location=from_loc, to_location=to_loc,
+                          price=price)
+    errand.save()
+    return errand.pk
 
 
-def new_errand(from_loc, to_loc, description, phone, price):
-    print(phone)
-    cursor.execute(
-        "INSERT INTO ERRANDS (from_loc, to_loc, status, phone, description, price) VALUES(%s, %s, '1', %s, %s, %s);",
-        (str(from_loc), str(to_loc), str(phone), description, str(price)))
-    cursor.execute("SELECT LAST_INSERT_ID();")
-    return cursor.fetchone()[0]
+# when a user accepts an errand posted by another user
+def accept_errand(errand_id, mail):
+    errand = ListedErrand.objects.get(errand_id=errand_id)
+    to_user = User.objects.get(mail=mail)
+    accepted_errand = AcceptedErrand(to_user=to_user, from_user=errand.from_user, description=errand.description,
+                                     from_location=errand.from_location, to_location=errand.to_location,
+                                     price=errand.price)
+    accepted_errand.save()
+    errand.delete()
+    return accepted_errand.pk
 
 
-def get_profile_from_database(phone):
-    print(phone)
+# when a user cancels an errand that they have accepted
+def cancel_errand(errand_id):
+    cancelled_errand = AcceptedErrand.objects.get(errand_id=errand_id)
+    errand = ListedErrand(from_user=cancelled_errand.from_user, description=cancelled_errand.description,
+                              from_location=cancelled_errand.from_location,
+                              to_location=cancelled_errand.to_location, price=cancelled_errand.price)
+    errand.save()
+    cancelled_errand.delete()
+    return errand.pk
 
-    profile_my_errands = my_errands(phone)
 
-    print(profile_my_errands)
+# when a user deletes an errand that they have posted
+def delete_errand(errand_id):
+    errand = ListedErrand.objects.get(errand_id=errand_id)
+    errand.delete()
+    return
 
-    my_errand_list = []
 
-    for each in profile_my_errands:
-        errand = {}
-        errand['from'] = each[0]
-        errand['to'] = each[1]
-        errand['desc'] = each[2]
-        errand['price'] = each[3]
-        errand['phone'] = each[4]
-        errand['dphone'] = each[5]
-        my_errand_list.append(errand)
+# when a user completes an errand that they have accepted
+def complete_errand(errand_id):
+    errand = AcceptedErrand.objects.get(errand_id=errand_id)
+    errand.delete()
+    return
 
-    print(my_errand_list)
 
-    profile_errands_dict = {'phone': phone, 'myErrands': my_errand_list}
+def get_profile_from_database(mail):
+    my_listed_errands, my_accepted_errands, my_todo_errands = my_errands(mail)
 
-    print(profile_errands_dict)
+    my_posted_errand_list = []
+    my_todo_errand_list = []
+
+    for each in my_listed_errands:
+        errand = {'to_user': None,
+                  'description': each.description,
+                  'price': each.price,
+                  'mail': None,
+                  'from_loc': each.from_location,
+                  'to_loc': each.to_location}
+        my_posted_errand_list.append(errand)
+
+    for each in my_accepted_errands:
+        errand = {'to_user': each.to_user.name,
+                  'description': each.description,
+                  'price': each.price,
+                  'mail': each.to_user.mail,
+                  'from_loc': each.from_location,
+                  'to_loc': each.to_location}
+        my_posted_errand_list.append(errand)
+
+    for each in my_todo_errands:
+        errand = {'to_user': each.to_user.name,
+                  'description': each.description,
+                  'price': each.price,
+                  'mail': each.to_user.mail,
+                  'from_loc': each.from_location,
+                  'to_loc': each.to_location}
+        my_todo_errand_list.append(errand)
+
+    profile_errands_dict = {'mail': mail, 'myPostedErrands': my_posted_errand_list, 'myTodoErrands': my_todo_errand_list}
 
     profile_errands_json = json.dumps(profile_errands_dict)
-
-    print(profile_errands_json)
 
     return profile_errands_json
 
 
-def my_errands(phone):
-    cursor.execute("SELECT from_loc, to_loc, description, price, phone, dphone FROM ERRANDS WHERE phone = %s",
-                   [str(phone)])
-    return cursor.fetchall()
+def my_errands(mail):
+    # find the user object with mail = mail
+    user = User.objects.get(mail=mail)
+
+    # errands that the user has posted but hasnt been accepted
+    my_listed_errands = ListedErrand.objects.filter(from_user=user)
+
+    # errands that the user has posted and has been accepted
+    my_accepted_errands = AcceptedErrand.objects.filter(from_user=user)
+
+    # errands that the user has accepted and has to do
+    my_todo_errands = AcceptedErrand.objects.filter(to_user=user)
+
+    return my_listed_errands, my_accepted_errands, my_todo_errands
 
 
 def get_listed_errands():
-    cursor.execute(
-        "SELECT from_loc, to_loc, description, price FROM ERRANDS WHERE status=1 AND order_time > (CURRENT_TIMESTAMP - INTERVAL '3 HOUR')")
-
-    profile_listed_errands = cursor.fetchall()
+    listed_errands = ListedErrand.objects.all()
 
     listed_errand_list = []
 
-    for each in profile_listed_errands:
-        errand = {}
-        errand['from'] = each[0]
-        errand['to'] = each[1]
-        errand['desc'] = each[2]
-        errand['price'] = each[3]
+    for each in listed_errands:
+        errand = {'from_loc': each.from_location,
+                  'to_loc': each.to_location,
+                  'description': each.description,
+                  'price': each.price}
         listed_errand_list.append(errand)
-
-    print(listed_errand_list)
 
     listed_errands_dict = {'listedErrands': listed_errand_list}
 
-    print(listed_errands_dict)
-
     listed_errands_json = json.dumps(listed_errands_dict)
-
-    print(listed_errands_json)
 
     return listed_errands_json
