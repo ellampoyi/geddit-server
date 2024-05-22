@@ -1,7 +1,8 @@
-import json
+import orjson
 from channels.generic.websocket import AsyncWebsocketConsumer
 from django.db import connection
 from django.db import IntegrityError
+from django.contrib.auth import authenticate
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from geddit.server.models import AcceptedErrand
@@ -22,51 +23,72 @@ class YourConsumer(AsyncWebsocketConsumer):
 
         print(text_data)
 
-        text_data_json = json.loads(text_data)
+        text_data_json = orjson.loads(text_data)
         command = text_data_json['command']
 
         if command == 'authenticate':
-            password_hash = text_data_json['hash']
+            password = text_data_json['password']
             mail = text_data_json['mail']
-            # have to get value from sq
-            print(authenticate(mail, password_hash))
-            await self.send(text_data=json.dumps({
+            user = User.objects.get(mail=mail)
+            await self.send(text_data=orjson.dumps({
                 'command': 'authenticate',
-                'status': 1 if authenticate(mail, password_hash) else 0
-            }))
-            #sendProfile(phone)
+                'status': 1 if user.check_password(password) else 0
+            }).decode('utf-8'))
 
         elif command == 'create_new_errand':
-            mail = text_data_json['clientMail']
+            mail = text_data_json['client_mail']
             from_user = text_data_json['from_user']
             to_user = text_data_json['to_user']
             description = text_data_json['description']
             price = text_data_json['price']
-
             new_errand(from_user, to_user, description, mail, price)
-
             await self.channel_layer.group_send("campus", {'type': 'broadcast_message',
-                                                           'message': json.dumps(display_errands()), })
+                                                           'message': orjson.dumps(get_listed_errands()).decode('utf-8')})
 
         elif command == 'register_new_user':
             mail = text_data_json['mail']
-            password_hash = text_data_json['hash']
-            await self.send(text_data=json.dumps({
+            password = text_data_json['password']
+            await self.send(text_data=orjson.dumps({
                 'command': 'register_new_user',
-                'status': 1 if create_account(mail, password_hash) else 0
-            }))
+                'status': create_account(mail, password)    # json element
+            }).decode('utf-8'))
 
-        #elif command == 'user'
+        elif command == 'accept_errand':
+            mail = text_data_json['mail']
+            errand_id = text_data_json['errand_id']
+            accept_errand(errand_id, mail)
+            await self.channel_layer.group_send("campus", {'type': 'broadcast_message',
+                                                           'message': orjson.dumps(get_listed_errands()).decode('utf-8')})
 
-        # Process the message as needed
+        elif command == 'cancel_errand':
+            errand_id = text_data_json['errand_id']
+            cancel_errand(errand_id)
+            await self.channel_layer.group_send("campus", {'type': 'broadcast_message',
+                                                           'message': orjson.dumps(get_listed_errands()).decode('utf-8')})
 
-        # await self.send(text_ddjang ata=json.dumps({
-        #    'message': message
-        # }))
+        elif command == 'delete_errand':
+            errand_id = text_data_json['errand_id']
+            delete_errand(errand_id)
+            await self.channel_layer.group_send("campus", {'type': 'broadcast_message',
+                                                           'message': orjson.dumps(get_listed_errands()).decode('utf-8')})
+
+        elif command == 'complete_errand':
+            errand_id = text_data_json['errand_id']
+            complete_errand(errand_id)
+            await self.channel_layer.group_send("campus", {'type': 'broadcast_message',
+                                                           'message': orjson.dumps(get_listed_errands()).decode('utf-8')})
+
+        elif command == 'get_profile':
+            mail = text_data_json['mail']
+            await self.send(text_data=get_profile_from_database(mail))
+        
+        elif command == 'get_listed_errands':
+            await self.send(text_data=get_listed_errands())
+
 
     async def broadcast_message(self, event):
         # Send the message to the client
-        await self.send(text_data=json.dumps({'command': 'availableerrands', 'availableerrands': event['message']}))
+        await self.send(text_data=orjson.dumps({'command': 'availableerrands', 'availableerrands': event['message']}).decode('utf-8'))
 
 
 def create_account(mail, password):
@@ -77,19 +99,19 @@ def create_account(mail, password):
     except IntegrityError:
         status = {"status": False,
                   "reason": "user already exists"}
-        status_json = json.dumps(status)
+        status_json = orjson.dumps(status).decode('utf-8')
         return status_json
 
     except ValidationError as e:
         status = {"status": False,
                   "reason": list(e.messages)}
-        status_json = json.dumps(status)
+        status_json = orjson.dumps(status).decode('utf-8')
         return status_json
 
     else:
         status = {"status": True,
                   "reason": None}
-        status_json = json.dumps(status)
+        status_json = orjson.dumps(status).decode('utf-8')
         return status_json
 
 
@@ -174,7 +196,7 @@ def get_profile_from_database(mail):
 
     profile_errands_dict = {'mail': mail, 'myPostedErrands': my_posted_errand_list, 'myTodoErrands': my_todo_errand_list}
 
-    profile_errands_json = json.dumps(profile_errands_dict)
+    profile_errands_json = orjson.dumps(profile_errands_dict).decode('utf-8')
 
     return profile_errands_json
 
@@ -209,6 +231,6 @@ def get_listed_errands():
 
     listed_errands_dict = {'listedErrands': listed_errand_list}
 
-    listed_errands_json = json.dumps(listed_errands_dict)
+    listed_errands_json = orjson.dumps(listed_errands_dict).decode('utf-8')
 
     return listed_errands_json
