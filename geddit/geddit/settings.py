@@ -107,7 +107,7 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-AUTH_USER_MODEL = 'server.models.CustomUser'    # note: this path is wrong find fix
+AUTH_USER_MODEL = 'server.CustomUser'
 
 # Internationalization
 # https://docs.djangoproject.com/en/4.2/topics/i18n/
