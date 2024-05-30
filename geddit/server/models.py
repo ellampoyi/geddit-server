@@ -29,6 +29,7 @@ from django.contrib.auth.models import User, AbstractUser
 class CustomUser(AbstractUser):
     username = None
     mail = models.EmailField('mail', unique=True)
+    rating = models.FloatField(default=4)
 
     USERNAME_FIELD = 'mail'
     REQUIRED_FIELDS = []

@@ -74,7 +74,8 @@ class YourConsumer(AsyncWebsocketConsumer):
 
         elif command == 'complete_errand':
             errand_id = text_data_json['errand_id']
-            complete_errand(errand_id)
+            errand_rating = text_data_json['errand_rating']
+            complete_errand(errand_id, errand_rating)
             await self.channel_layer.group_send("campus", {'type': 'broadcast_message',
                                                            'message': orjson.dumps(get_listed_errands()).decode('utf-8')})
 
@@ -155,8 +156,10 @@ def delete_errand(errand_id):
 
 
 # when a user completes an errand that they have accepted
-def complete_errand(errand_id):
+def complete_errand(errand_id, errand_rating):
     errand = AcceptedErrand.objects.get(errand_id=errand_id)
+    user = errand.to_user
+    user.rating = (user.rating + errand_rating) / 2
     errand.delete()
     return
 
